@@ -155,38 +155,6 @@ The OrangePi 5 Plus board has a 16MB SPI-Flash for the bootloader. A custom U-Bo
   ```
 * Insert a SD-Card with the i.e. OrangePi5 Debian Bookworm image and start the device
 
-### Create rootfs
-
-* based on https://hechao.li/posts/Boot-Raspberry-Pi-4-Using-uboot-and-Initramfs/#61-create-directories
-* change to the root of the sdcard
-* create rootfs directories:
-```
-sudo mkdir -p {bin,dev,etc,home,lib64,proc,sbin,sys,tmp,usr,var}
-sudo mkdir -p usr/{bin,lib,slib}
-sudo mkdir -p var/log
-# remove the former lib directory which was used in the chroot to run dpkg on x86
-rm -r lib/
-# create a link lib to lib64/ directory so that busybox can find its libs in lib/
-sudo ln -s lib64 lib
-```
-* clone busybox and switch to stable version 1.36
-```
-git clone https://github.com/mirror/busybox.git
-git checkout 1_36_stable
-```
-* configure and build busybox
-```
-make CROSS_COMPILE=aarch64-linux-gnu- defconfig
-make CROSS_COMPILE=aarch64-linux-gnu- busybox
-# install it to default install dir ./_install (configurable in defconfig step or in ./.config, can also be set to the sdcard rootfs)
-make CROSS_COMPILE=aarch64-linux-gnu- install
-```
-* copy the installed files to the sdcard rootfs:
-`sudo cp -vr _install/* /mnt/sdcard/`
-
-* copy required libs to run busybox:
-`sudo cp -v -L /usr/aarch64-linux-gnu/lib/{ld-linux-aarch64.so.1, libm.so.6, libresolv.so.2, libc.so.6} /mnt/sdcard/lib64/`
-
 # Boot the OrangePi 5 Plus board
 
 It is beneficial to use a USB-UART-Adapter that supports 1500000 bauds datarate. Pay attention to the correct wiring! OrangePi 5 Plus needs to connect the TX-wire with RX on the board, see also http://www.orangepi.org/orangepiwiki/index.php/Orange_Pi_5_Plus#How_to_use_the_debugging_serial_port
@@ -283,6 +251,145 @@ Starting kernel ...
 [  515.720315] Linux version 6.1.43-rockchip-rk3588 (root@f55fae764dbe) (aarch64-none-linux-gnu-gcc (GNU Toolchain for the Arm Architecture 11.2-2022.02 (arm-11.14)) 11.2.1 20220111, GNU ld (GNU Toolchain for the Arm Architecture 11.2-2022.02 (arm-11.14)) 2.37.20220122) #1.2.0 SMP Sun Aug 17 18:45:41 UTC 2025
 ...
 ```
+
+# Build an upstream kernel
+
+This was tested with kernel version 6.15.7
+
+## Build the kernel
+
+### Get the kernel
+
+* Get source code from kernel.org. Choose a kernel .tar.xz from https://www.kernel.org/pub/linux/kernel/v6.x/ like https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.15.7.tar.xz
+* Verify the signature, see https://www.kernel.org/category/signatures.html
+  ```
+  gpg2 --locate-keys torvalds@kernel.org gregkh@kernel.org
+  curl -OL https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.15.7.tar.sign
+  gpg2 --tofu-policy good 38DBBDC86092693E
+  xz -cd linux-6.15.7.tar.xz | gpg2 --trust-model tofu --verify linux-6.15.7.tar.sign -
+  ```
+* or simply use [get-verified-tarball](https://git.kernel.org/pub/scm/linux/kernel/git/mricon/korg-helpers.git/tree/get-verified-tarball)
+
+### Compile the kernel
+
+* Configure the kernel manually or use the [prepared kernel-config](./config.kernel.6.15.7.orangepi5plus)
+
+#### Manual configuration
+
+* Run menuconfig:
+  ```
+  make -j16 \
+    ARCH=arm64 \
+    CROSS_COMPILE=aarch64-linux-gnu- \
+    KERNEL_IMAGE_TYPE="zImage" \
+    ATF_COMPILE=yes \
+    SKIP_BOOTSPLASH=yes \
+    IMAGE_PARTITION_TABLE=gpt \
+    BUILD_KSRC=no \
+    ROOTFS_TYPE=ext4 \
+    DEB_COMPRESS=xz \
+    ROOTPWD=orangepi \
+    PLYMOUTH=yes \
+    KBUILD_IMAGE=Image.gz \
+    INSTALL_PATH=./_install \
+    menuconfig
+  ```
+  Make sure to enable the Rockchip platform and the 8250-serial-console. The console is required to have an initial console over serial on ttyS2. These configs need to be set in the `.config` file:
+  ```
+  CONFIG_SERIAL_CORE=y
+  CONFIG_SERIAL_CORE_CONSOLE=y
+  CONFIG_SERIAL_8250=y
+  CONFIG_SERIAL_8250_CONSOLE=y
+  CONFIG_SERIAL_8250_EXTENDED=y
+  CONFIG_SERIAL_8250_SHARE_IRQ=y
+  CONFIG_SERIAL_ARM_CONSOLE=y        # if on ARM SoC
+  CONFIG_SERIAL_AMBA_PL011=y         # if using PL011 UART (Rockchip/ARM)
+  CONFIG_SERIAL_AMBA_PL011_CONSOLE=y # optional
+  CONFIG_SERIAL_8250_NR_UARTS=4      # ensure at least 3 (ttyS0-S2), OrangePi5 supports 32 UARTs
+  ```
+
+* Build the compressed kernel image:
+
+  >**Note:**  For signature checking, the kernel build process requires certificates from Canonical.
+              See also: https://stackoverflow.com/a/72528175
+
+              # install linux sources where the debian certificates are usually included
+              sudo apt install linux-source-6.5.0
+              # create a debian/ dir in the kernel source dir and copy the pem-certs into it:
+              mkdir -p debian/
+              cp -v /usr/src/linux-source-6.5.0/debian/canonical-*.pem debian/
+
+  The target `Image.gz` builds a compressed image which will be copied to a `vmlinuz` file on install
+  ```
+  make -j16 \
+    ARCH=arm64 \
+    CROSS_COMPILE=aarch64-linux-gnu- \
+    KERNEL_IMAGE_TYPE="zImage" \
+    ATF_COMPILE=yes \
+    SKIP_BOOTSPLASH=yes \
+    IMAGE_PARTITION_TABLE=gpt \
+    BUILD_KSRC=no \
+    ROOTFS_TYPE=ext4 \
+    DEB_COMPRESS=xz \
+    ROOTPWD=orangepi \
+    PLYMOUTH=yes \
+    KBUILD_IMAGE=Image.gz \
+    INSTALL_PATH=./_install \
+    Image.gz
+  ```
+
+* Install the kernel image:
+
+  >**Note:** For any reason, the install target expects the Image.gz file in the root path of the repository, but the make command above created in arch/arm64/boot/Image.gz. That requires to copy the Image.gz beforehand manually to the root of the repositoy: cp arch/arm64/boot/Image.gz ./
+
+  ```
+  make -j16 \
+    ARCH=arm64 \
+    CROSS_COMPILE=aarch64-linux-gnu- \
+    KERNEL_IMAGE_TYPE="zImage" \
+    ATF_COMPILE=yes \
+    SKIP_BOOTSPLASH=yes \
+    IMAGE_PARTITION_TABLE=gpt \
+    BUILD_KSRC=no \
+    ROOTFS_TYPE=ext4 \
+    DEB_COMPRESS=xz \
+    ROOTPWD=orangepi \
+    PLYMOUTH=yes \
+    KBUILD_IMAGE=Image.gz \
+    INSTALL_PATH=./_install \
+    install
+  ```
+
+  * The install command creates the specified install directory `./_install` with the `vmlinuz` compressed image file
+    ```
+    _install/
+    ├── config-6.15.7
+    ├── System.map-6.15.7
+    └── vmlinuz-6.15.7
+
+    ```
+* Install the `dtb` files of the specified platform:
+
+  ```
+  make -j16 \
+    ARCH=arm64 \
+    CROSS_COMPILE=aarch64-linux-gnu- \
+    KERNEL_IMAGE_TYPE="zImage" \
+    ATF_COMPILE=yes \
+    SKIP_BOOTSPLASH=yes \
+    IMAGE_PARTITION_TABLE=gpt \
+    BUILD_KSRC=no \
+    ROOTFS_TYPE=ext4 \
+    DEB_COMPRESS=xz \
+    ROOTPWD=orangepi \
+    PLYMOUTH=yes \
+    KBUILD_IMAGE=Image.gz \
+    INSTALL_PATH=./_install \
+    dtbs_install
+  ```
+  * The dtb file of the OrangePi 5 Plus can be found in
+
+    `_install/dtbs/6.15.7/rockchip/rk3588-orangepi-5-plus.dtb`
 
 ## Testing self-comppiled kernel 6.15.7
 
@@ -2306,6 +2413,38 @@ bootargs: `rdinit=/init splash=verbose earlycon console=ttyS2,1500000n8 loglevel
 [    2.180081] Memory Limit: none
 [    2.180369] ---[ end Kernel panic - not syncing: Attempted to kill init! exitcode=0x00000100 ]---
 ```
+
+### Create rootfs
+
+* based on https://hechao.li/posts/Boot-Raspberry-Pi-4-Using-uboot-and-Initramfs/#61-create-directories
+* change to the root of the sdcard
+* create rootfs directories:
+```
+sudo mkdir -p {bin,dev,etc,home,lib64,proc,sbin,sys,tmp,usr,var}
+sudo mkdir -p usr/{bin,lib,slib}
+sudo mkdir -p var/log
+# remove the former lib directory which was used in the chroot to run dpkg on x86
+rm -r lib/
+# create a link lib to lib64/ directory so that busybox can find its libs in lib/
+sudo ln -s lib64 lib
+```
+* clone busybox and switch to stable version 1.36
+```
+git clone https://github.com/mirror/busybox.git
+git checkout 1_36_stable
+```
+* configure and build busybox
+```
+make CROSS_COMPILE=aarch64-linux-gnu- defconfig
+make CROSS_COMPILE=aarch64-linux-gnu- busybox
+# install it to default install dir ./_install (configurable in defconfig step or in ./.config, can also be set to the sdcard rootfs)
+make CROSS_COMPILE=aarch64-linux-gnu- install
+```
+* copy the installed files to the sdcard rootfs:
+`sudo cp -vr _install/* /mnt/sdcard/`
+
+* copy required libs to run busybox:
+`sudo cp -v -L /usr/aarch64-linux-gnu/lib/{ld-linux-aarch64.so.1, libm.so.6, libresolv.so.2, libc.so.6} /mnt/sdcard/lib64/`
 
 # Official OrangePi 5 Build
 
