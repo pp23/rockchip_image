@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# a proxy of the patch executable that exposes the piped in patch
+
+# peak into possible piped in data
+IFS= read -t0.00001 -d'' -r A
+B=
+
+# if piped data was found, read the remaining input data
+test -z "${A}" || while IFS= read -r LINE;do B+="${LINE}"$'\n';done
+
+# expose the patch
+echo -e "\033[0;31m!!! Applying patch: !!!"
+echo -e "\033[0;32m${A}${B}\033[0m";
+
+# replace newlines with real newlines remove trailing \n
+B=`echo -n "${B}"|head -c-1`
+
+echo "CMD: patch $@"
+
+# run the real patch bin
+echo "${A}${B}"|/usr/bin/patch $@
