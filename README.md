@@ -157,6 +157,8 @@ The OrangePi 5 Plus board has a 16MB SPI-Flash for the bootloader. A custom U-Bo
 
 # Boot the OrangePi 5 Plus board
 
+>**Note:** This uses the original vendor kernel for testing purposes. How to run the self-build kernel, see [Testing self-compiled kernel 6.15.7](#testing-self-compiled-kernel-6.15.7)
+
 It is beneficial to use a USB-UART-Adapter that supports 1500000 bauds datarate. Pay attention to the correct wiring! OrangePi 5 Plus needs to connect the TX-wire with RX on the board, see also http://www.orangepi.org/orangepiwiki/index.php/Orange_Pi_5_Plus#How_to_use_the_debugging_serial_port
 
 Start a TTY console on your host machine where the serial-adapter is plugged in:
@@ -928,7 +930,23 @@ The rootfs in this example is based on [busybox](https://github.com/mirror/busyb
   booti ${kernel_addr_r} - ${fdt_addr_r}
   ```
   * `rootwait` can be omitted in case the kernel hangs up here to see further errors why the root device could not get mounted
-* If everything worked as expected, a ash-shell of the initramfs-busybox should appear over the serial
+* If everything worked as expected, a ash-shell of the initramfs-busybox should appear over the serial (try to press enter if you cannot see a prompt)
+
+### Switch to rootfs
+
+* Mount the rootfs:
+
+```
+mkdir -p /mnt/rootfs
+mount -o rw /dev/mmcblk1p1 /mnt/rootfs
+```
+
+* Call switch_root to leave the initramfs
+
+```
+# this runs bash as PID 1, you might want to call /sbin/init that links to a standard init system like systemd
+exec switch_root /mnt/rootfs /bin/bash
+```
 
 ## Troubleshooting
 
