@@ -308,6 +308,12 @@ This was tested with kernel version 6.15.7
   CONFIG_SERIAL_8250_NR_UARTS=4      # ensure at least 3 (ttyS0-S2), OrangePi5 supports 32 UARTs
   CONFIG_SERIAL_EARLYCON=y           # early console output of printk
   ```
+  Both 2.5GbE ethernet ports are connected via [PCI-based RTL8125BG NICs](http://www.orangepi.org/orangepiwiki/index.php/Orange_Pi_5_Plus#Hardware_Specifications_of_Orange_Pi_5_Plus). The Gigabit Ethernet MACs of Rockchip (gmac0/gmac1) are disabled by default. In order to enable and use the ethernet ports, the correct Realtek drivers need to get configured in the kernel. These config options are required for the kernel build to activate the ethernet ports:
+
+  ```
+  CONFIG_R8169=y
+  CONFIG_R8169_LEDS=y  # optional, NIC LEDs
+  ```
 
 * Build the compressed kernel image:
 
