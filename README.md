@@ -251,6 +251,26 @@ Starting kernel ...
 [  515.720315] Linux version 6.1.43-rockchip-rk3588 (root@f55fae764dbe) (aarch64-none-linux-gnu-gcc (GNU Toolchain for the Arm Architecture 11.2-2022.02 (arm-11.14)) 11.2.1 20220111, GNU ld (GNU Toolchain for the Arm Architecture 11.2-2022.02 (arm-11.14)) 2.37.20220122) #1.2.0 SMP Sun Aug 17 18:45:41 UTC 2025
 ...
 ```
+* Load a [Device Tree Overlay](https://docs.u-boot.org/en/latest/usage/fdt_overlays.html):
+  * Device Tree Overlays allow to modify attributes of nodes of the default device tree
+  * You need to build the default `dtb` file with symbols in order to use device tree overlays. See [manual configuration](#manual-configuration).
+    ```
+    # run the kernel Makefile:
+    make ARCH=arm64 DTC_FLAGS="-@" dtbs
+    ```
+  * Compile the dts overlay file:
+
+    `dtc -@ -I dts -O dtb -o overlay.dtbo overlay.dts`
+  * In the U-Boot console, load the default `dtb` with compiled in symbols and apply the overlay:
+    ```
+    ext4load mmc 1 ${fdt_addr_r} rk3588-orangepi-5-plus.symbols.dtb
+    # load the overlay
+    ext4load mmc 1 ${loadaddr} overlay.dtbo
+    fdt addr ${fdt_addr_r}
+    fdt resize
+    fdt apply ${loadaddr}
+    # run the kernel as usual
+    ```
 
 # Build an upstream kernel
 
@@ -375,6 +395,12 @@ This was tested with kernel version 6.15.7
     └── vmlinuz-6.15.7
 
     ```
+* Build `dtb` files of the specified platform:
+  ```
+  make ARCH=arm64 DTC_FLAGS="-@" dtbs
+  ```
+  * `DTC_FLAGS="-@"` builds the dtb files with symbols. Required for using dtb-overlays.
+
 * Install the `dtb` files of the specified platform:
 
   ```
