@@ -2,13 +2,14 @@
 
 set -euo pipefail
 
-OUT_DIR="${1:-initramfs/}"
-BUSYBOX_INSTALL_DIR="${2}"
+source create_base_rootfs.sh
 
-mkdir -vp ${OUT_DIR}/{bin,sbin,etc,proc,sys,dev}
-cp -aPv ${BUSYBOX_INSTALL_DIR}/bin/* ${OUT_DIR}/bin/
-rm -vf ${OUT_DIR}/bin/sh
-ln -s busybox ${OUT_DIR}/bin/sh
+INITRD_IMAGE_OUTPUT_FILE="uInitrd.busybox"            # initrd image file to get loaded by uBoot
+OUT_DIR="${1:-initramfs/}"                            # files and dirs that will be baked into the initrd image
+BUSYBOX_INSTALL_DIR="${2}"                            # dir where to find the install-dir of a busybox build
+
+create_base_rootfs "${OUT_DIR}" "${BUSYBOX_INSTALL_DIR}"
+echo "Successfully created base rootfs in \"${OUT_DIR}\""
 
 cat > ${OUT_DIR}/init << 'EOF'
 #!/bin/sh
@@ -21,12 +22,6 @@ exec /bin/sh
 EOF
 
 chmod +x ${OUT_DIR}/init
-
-sudo rm -vf ${OUT_DIR}/dev/console
-sudo mknod -m 622 ${OUT_DIR}/dev/console c 5 1
-
-sudo rm -vf ${OUT_DIR}/dev/null
-sudo mknod -m 666 ${OUT_DIR}/dev/null    c 1 3
 
 pushd ${OUT_DIR}
 sudo chown -R root:root ./*
