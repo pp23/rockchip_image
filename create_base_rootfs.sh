@@ -4,7 +4,6 @@
 
 
 create_base_rootfs() {
-set -euo pipefail
 OUT_DIR="${1}"                    # files and dirs of the rootfs
 BUSYBOX_INSTALL_DIR="${2}"        # dir where to find the install-dir of a busybox build
 
@@ -12,7 +11,8 @@ test $(ls -1 "${OUT_DIR}" 2>/dev/null|wc -l) -eq 0 || { echo "Error: Base rootfs
 test -d "${BUSYBOX_INSTALL_DIR}" || { echo "Error: 2nd positional parameter \"${BUSYBOX_INSTALL_DIR}\" is no directory. It has to be a Busybox install directory."; exit 1; }
 
 mkdir -p ${OUT_DIR}/{bin,sbin,etc,proc,sys,dev}
-cp -rP ${BUSYBOX_INSTALL_DIR}/bin/* ${OUT_DIR}/bin/
+cp -rP ${BUSYBOX_INSTALL_DIR}/* ${OUT_DIR}/
+rm -f ${OUT_DIR}/sbin/switch_root  # usually only required in initramfs
 rm -f ${OUT_DIR}/bin/sh
 ln -s busybox ${OUT_DIR}/bin/sh
 
@@ -21,7 +21,4 @@ sudo mknod -m 622 ${OUT_DIR}/dev/console c 5 1
 
 sudo rm -f ${OUT_DIR}/dev/null
 sudo mknod -m 666 ${OUT_DIR}/dev/null    c 1 3
-
-sudo chown -R root:root ${OUT_DIR}/*
-set +euo pipefail
 }

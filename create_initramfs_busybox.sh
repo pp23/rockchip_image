@@ -10,6 +10,7 @@ BUSYBOX_INSTALL_DIR="${2}"                            # dir where to find the in
 
 create_base_rootfs "${OUT_DIR}" "${BUSYBOX_INSTALL_DIR}"
 echo "Successfully created base rootfs in \"${OUT_DIR}\""
+cp -rv "${BUSYBOX_INSTALL_DIR}"/sbin "${OUT_DIR}"/
 
 cat > ${OUT_DIR}/init << 'EOF'
 #!/bin/sh
@@ -25,7 +26,22 @@ mount -t proc none /proc || fail "Cannot mount /proc"
 mount -t sysfs none /sys || fail "Cannot mount /sys"
 mount -t devtmpfs none /dev || fail "Cannot mount /dev"
 
-mount -t ext4 -o rw /dev/mmcblk1p1 /mnt || fail "Cannot mount /dev/mmcblk1p1"
+# mount the rootfs. Retry if it could not get immediately mounted.
+{
+mkdir -p /mnt || fail "Cannot create /mnt directory"
+max=10
+s=1
+i=0
+ret=0
+rootdev=/dev/mmcblk1p1
+echo "Trying to mount $rootdev each $s second max $max times..."
+while ! $(mount -t ext4 -o rw $rootdev /mnt);do
+i=$((i+1))
+[ $i -lt $max ] || { ret=1;break; }
+sleep $s
+done
+}; test $ret -eq 0 || fail "Cannot mount $rootdev"
+
 echo "Hello from initramfs!"
 exec switch_root /mnt /sbin/init || fail "switch_root failed"
 

@@ -50,6 +50,9 @@ set -euo pipefail
 create_base_rootfs "${OUT_DIR}" "${BUSYBOX_INSTALL_DIR}"
 echo "Successfully created base rootfs in \"${OUT_DIR}\""
 
+# remove the busybox link to /sbin/init. We override it with our own.
+unlink ${OUT_DIR}/sbin/init || true
+
 # write the init script that is the entrypoint of the system
 cat > ${OUT_DIR}/sbin/init << 'EOF'
 #!/bin/sh
@@ -58,7 +61,7 @@ mount -t sysfs none /sys
 mount -t devtmpfs none /dev
 
 echo "Hello from rootfs!"
-exec /bin/bash
+exec /bin/sh
 EOF
 chmod +x ${OUT_DIR}/sbin/init
 
@@ -74,12 +77,14 @@ booti \${kernel_addr_r} \${ramdisk_addr_r} \${fdt_addr_r}
 EOF
 mkimage -A arm64 -T script -C none -n "Boot Script" -d "${OUT_DIR}/boot/boot.cmd" "${OUT_DIR}/boot/boot.scr"
 
-pushd ${OUT_DIR}
-sudo chown -R root:root ./*
-popd
-
 echo "#### ${OUT_DIR}/boot/boot.cmd ####"
 cat ${OUT_DIR}/boot/boot.cmd
 echo "##################################"
+
+echo "Copying boot files like vmlinuz kernel, initrd-image"
+
+cp -v "${VMLINUZ_IMAGE_FILE}" "${INITRD_IMAGE_FILE}" "${DTB_FILE}" "${OUT_DIR}/boot/"
+
+sudo chown -R root:root ${OUT_DIR}/*
 
 echo "Successfully created ${ROOTFS_IMAGE_OUTPUT_FILE} file!"
